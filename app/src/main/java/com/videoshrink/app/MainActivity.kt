@@ -1,9 +1,7 @@
 
 package com.videoshrink.app
 
-import android.app.Activity
 import android.os.Bundle
-import android.content.Intent
 import android.net.Uri
 import android.view.Gravity
 import android.widget.*
@@ -11,14 +9,31 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.database.Cursor
 import android.provider.OpenableColumns
-import androidx.activity.result.contract.ActivityResultContracts
+import android.content.ContentValues
+import android.provider.MediaStore
+import android.os.Environment
+import android.os.Build
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.Effects
+import androidx.media3.transformer.Presentation
+import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.ExportException
+import java.io.File
+import java.io.FileInputStream
 
 class MainActivity : ComponentActivity() {
 
     private var selectedVideo: Uri? = null
     private lateinit var videoInfo: TextView
     private lateinit var compressButton: Button
+    private lateinit var quality: Spinner
+    private lateinit var statusText: TextView
 
     private val videoPicker =
         registerForActivityResult(
@@ -28,6 +43,7 @@ class MainActivity : ComponentActivity() {
                 selectedVideo = uri
                 videoInfo.text = "Selected: ${getFileName(uri)}"
                 compressButton.isEnabled = true
+                statusText.text = "Ready to compress"
             }
         }
 
@@ -43,6 +59,114 @@ class MainActivity : ComponentActivity() {
             }
         }
         return name
+    }
+
+    private fun startCompression() {
+        val inputUri = selectedVideo ?: return
+
+        val height = when (quality.selectedItem.toString()) {
+            "480p" -> 480
+            "720p" -> 720
+            else -> 1080
+        }
+
+        compressButton.isEnabled = false
+        statusText.text = "Compressing your video... Please wait."
+
+        val outputFile = File(
+            cacheDir,
+            "compressed_${System.currentTimeMillis()}.mp4"
+        )
+
+        try {
+            val editedItem = EditedMediaItem.Builder(
+                MediaItem.fromUri(inputUri)
+            ).setEffects(
+                Effects(
+                    emptyList(),
+                    listOf(Presentation.createForHeight(height))
+                )
+            ).build()
+
+            val transformer = Transformer.Builder(this)
+                .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                .addListener(object : Transformer.Listener {
+
+                    override fun onCompleted(
+                        composition: Composition,
+                        exportResult: ExportResult
+                    ) {
+                        try {
+                            saveToGallery(outputFile)
+                            statusText.text = "Compression complete! Video saved."
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Compressed video saved!",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } catch (e: Exception) {
+                            statusText.text = "Video created, but saving failed."
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Saving error: ${e.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } finally {
+                            outputFile.delete()
+                            compressButton.isEnabled = true
+                        }
+                    }
+
+                    override fun onError(
+                        composition: Composition,
+                        exportResult: ExportResult,
+                        exportException: ExportException
+                    ) {
+                        outputFile.delete()
+                        statusText.text = "Compression failed: ${exportException.message}"
+                        compressButton.isEnabled = true
+                    }
+                })
+                .build()
+
+            transformer.start(editedItem, outputFile.absolutePath)
+
+        } catch (e: Exception) {
+            outputFile.delete()
+            statusText.text = "Error: ${e.message}"
+            compressButton.isEnabled = true
+        }
+    }
+
+    private fun saveToGallery(file: File) {
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(
+                    MediaStore.Video.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_MOVIES + "/VideoShrink"
+                )
+            }
+        }
+
+        val uri = contentResolver.insert(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            values
+        ) ?: throw Exception("Could not create video entry")
+
+        try {
+            contentResolver.openOutputStream(uri)?.use { output ->
+                FileInputStream(file).use { input ->
+                    input.copyTo(output)
+                }
+            } ?: throw Exception("Could not save video")
+        } catch (e: Exception) {
+            contentResolver.delete(uri, null, null)
+            throw e
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,24 +213,26 @@ class MainActivity : ComponentActivity() {
             setTextColor(Color.WHITE)
         }
 
-        val quality = Spinner(this)
-        val options = arrayOf("480p", "720p", "1080p")
+        quality = Spinner(this)
         quality.adapter = ArrayAdapter(
             this,
             android.R.layout.simple_spinner_dropdown_item,
-            options
+            arrayOf("480p", "720p", "1080p")
         )
 
         compressButton = Button(this).apply {
             text = "COMPRESS VIDEO"
             isEnabled = false
             setOnClickListener {
-                Toast.makeText(
-                    this@MainActivity,
-                    "Compression engine coming next!",
-                    Toast.LENGTH_SHORT
-                ).show()
+                startCompression()
             }
+        }
+
+        statusText = TextView(this).apply {
+            text = "Select a video to begin"
+            textSize = 14f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
         }
 
         layout.addView(title)
@@ -119,6 +245,7 @@ class MainActivity : ComponentActivity() {
         layout.addView(quality)
         layout.addView(Space(this), LinearLayout.LayoutParams(1, 25))
         layout.addView(compressButton)
+        layout.addView(statusText)
 
         setContentView(layout)
     }
