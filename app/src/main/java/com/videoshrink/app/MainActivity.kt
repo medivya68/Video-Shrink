@@ -12,8 +12,9 @@ import android.graphics.Typeface
 import android.database.Cursor
 import android.provider.OpenableColumns
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.ComponentActivity
 
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
 
     private var selectedVideo: Uri? = null
     private lateinit var videoInfo: TextView
