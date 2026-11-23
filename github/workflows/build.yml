@@ -1,6 +1,6 @@
 name: Build Video Shrink APK
 
-on:
+'on':
   workflow_dispatch:
   push:
     branches:
