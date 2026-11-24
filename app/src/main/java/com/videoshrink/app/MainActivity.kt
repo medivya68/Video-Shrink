@@ -143,9 +143,8 @@ private fun requestDeleteOriginal(uri: Uri) {
         deleteOriginalLauncher.launch(request)
 
     } catch (e: Exception) {
-        statusText.text =
-            "Original kept. Android couldn't request deletion."
-
+    statusText.text =
+    "Deletion error: ${e.javaClass.simpleName}: ${e.message}"
         Toast.makeText(
             this,
             "Could not request deletion. The original was kept.",
