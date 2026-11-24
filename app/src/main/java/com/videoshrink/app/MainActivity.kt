@@ -299,6 +299,8 @@ private fun getFileName(uri: Uri): String {
                             statusText.text =
                                 "Compression complete! Video saved."
 
+showDeleteOriginalDialog()
+
                             Toast.makeText(
                                 this@MainActivity,
                                 "Compressed video saved!",
