@@ -29,6 +29,10 @@ import androidx.media3.transformer.ExportException
 import java.io.File
 import java.io.FileInputStream
 import java.util.Locale
+import android.app.Activity
+import android.app.AlertDialog
+import androidx.activity.result.IntentSenderRequest
+
 
 class MainActivity : ComponentActivity() {
 
@@ -67,7 +71,90 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-    private fun getFileName(uri: Uri): String {
+
+private val deleteOriginalLauncher =
+    registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+
+        if (result.resultCode == Activity.RESULT_OK) {
+            statusText.text = "Original video deleted."
+
+            Toast.makeText(
+                this,
+                "Original video deleted.",
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            statusText.text = "Original video kept."
+        }
+    }
+    
+
+private fun showDeleteOriginalDialog() {
+    val originalUri = selectedVideo ?: return
+
+    AlertDialog.Builder(this)
+        .setTitle("Compression successful!")
+        .setMessage(
+            "Your compressed video has been saved.\n\n" +
+            "Would you like to delete the original video?"
+        )
+        .setNegativeButton("Keep Original") { _, _ ->
+            statusText.text = "Original video kept."
+        }
+        .setPositiveButton("Delete Original") { _, _ ->
+            requestDeleteOriginal(originalUri)
+        }
+        .setCancelable(true)
+        .show()
+}
+
+private fun requestDeleteOriginal(uri: Uri) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        statusText.text =
+            "Original kept. Safe deletion confirmation requires Android 11 or newer."
+        return
+    }
+
+    if (uri.scheme != "content" ||
+        uri.authority != MediaStore.AUTHORITY
+    ) {
+        statusText.text =
+            "Original kept. This video source doesn't support safe deletion from Video Shrink."
+        Toast.makeText(
+            this,
+            "Please delete the original from its Gallery or file app.",
+            Toast.LENGTH_LONG
+        ).show()
+        return
+    }
+
+    try {
+        val deleteRequest = MediaStore.createDeleteRequest(
+            contentResolver,
+            listOf(uri)
+        )
+
+        val request = IntentSenderRequest.Builder(
+            deleteRequest.intentSender
+        ).build()
+
+        deleteOriginalLauncher.launch(request)
+
+    } catch (e: Exception) {
+        statusText.text =
+            "Original kept. Android couldn't request deletion."
+
+        Toast.makeText(
+            this,
+            "Could not request deletion. The original was kept.",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+}
+
+private fun getFileName(uri: Uri): String {
         var name = "Selected video"
 
         val cursor: Cursor? = contentResolver.query(
